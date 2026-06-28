@@ -9,15 +9,17 @@
 #   (1) 过度养育: X = parent_overparenting_T2, Y = student_overparenting_T2
 #   (2) 自主支持: X = parent_autonomy_support_T2, Y = student_autonomy_support_T2
 #
-# 主中介变量 (T3):
-#   - 自我效能感 (self_efficacy_T3)
-#   - 内在价值 (intrinsic_value_T3)
-#
-# 扩展中介变量 (T3):
-#   - 兴趣型好奇心 (epistemic_curiosity_interest_T3)
+# T3 中介变量 (7 个, 每个控制对应 T2 前测):
+#   - academic_self_efficacy_T3  (学业自我效能感)
+#   - intrinsic_value_T3         (内在价值)
+#   - socioemotional_curiosity_T3 (社会情感好奇心, 社会情感能力量表子维度)
+#   - interest_curiosity_T3      (兴趣型好奇心, 认知性好奇心子量表)
+#   - deprivation_curiosity_T3   (剥夺型好奇心, 认知性好奇心子量表)
+#   - cognitive_curiosity_T3     (认知性好奇心总分)
+#   - grit_T3                    (坚毅)
 #
 # 结果变量 (T4):
-#   - 学业倦怠 (burnout_T4)
+#   - burnout_T4 (学业倦怠)
 #
 # 纵向中介设计控制:
 #   - 每个中介模型控制相应中介变量的 T2 前测 (M_T2)
@@ -55,51 +57,38 @@ set.seed(2024)
 
 
 # =============================================================================
-# 第 1 部分: 读取数据、合并中介变量、变量验证
+# 第 1 部分: 读取数据与变量验证
 # =============================================================================
 
-# --- 1.1 读取 rsa_ready 基础数据集 ---
-data_path <- "matched_T2_T3_T4_with_T1sex_parent_caregiver_v4.xlsx"
-dat <- read_excel(data_path, sheet = "rsa_ready")
-cat("rsa_ready 维度:", nrow(dat), "行 ×", ncol(dat), "列\n")
+# --- 1.1 读取 rsa_ready_plus_mediators (所有中介变量已在此 sheet 中) ---
+data_path <- "matched_T2_T3_T4_with_T1sex_parent_caregiver_v4_plus_mediators.xlsx"
+dat <- read_excel(data_path, sheet = "rsa_ready_plus_mediators")
+cat("数据维度:", nrow(dat), "行 ×", ncol(dat), "列\n")
+cat("变量名:\n")
+print(names(dat))
 
-# --- 1.2 从 matching_full 提取 T3 中介变量和 T2 前测 ---
-dat_full <- read_excel(data_path, sheet = "matching_full")
-
-mediator_vars <- dat_full %>%
-  transmute(
-    final_id = final_id,
-    # T3 中介变量
-    self_efficacy_T3            = as.numeric(`T3__自我效能感`),
-    intrinsic_value_T3          = as.numeric(`T3__内在价值`),
-    epistemic_curiosity_interest_T3 = as.numeric(`T3__兴趣型好奇心`),
-    # T2 中介变量前测 (用于纵向中介模型中控制基线水平)
-    self_efficacy_T2            = as.numeric(`T2__自我效能感`),
-    intrinsic_value_T2          = as.numeric(`T2__内在价值`),
-    epistemic_curiosity_interest_T2 = as.numeric(`T2__兴趣型好奇心`)
-  )
-
-dat <- dat %>%
-  left_join(mediator_vars, by = "final_id")
-
-rm(dat_full)
-cat("合并中介变量后维度:", nrow(dat), "行 ×", ncol(dat), "列\n")
-
-# --- 1.3 量表范围验证 ---
-# 请根据实际量表范围修改; 超范围值会产生警告
+# --- 1.2 量表范围验证 ---
 SCALE_RANGES <- list(
-  student_overparenting_T2          = c(1, 5),
-  parent_overparenting_T2           = c(1, 5),
-  student_autonomy_support_T2       = c(1, 7),
-  parent_autonomy_support_T2        = c(1, 7),
-  self_efficacy_T2                  = c(1, 7),
-  self_efficacy_T3                  = c(1, 7),
-  intrinsic_value_T2                = c(1, 7),
-  intrinsic_value_T3                = c(1, 7),
-  epistemic_curiosity_interest_T2   = c(1, 7),
-  epistemic_curiosity_interest_T3   = c(1, 7),
-  burnout_T2                        = c(1, 5),
-  burnout_T4                        = c(1, 5)
+  student_overparenting_T2    = c(1, 5),
+  parent_overparenting_T2     = c(1, 5),
+  student_autonomy_support_T2 = c(1, 7),
+  parent_autonomy_support_T2  = c(1, 7),
+  burnout_T2                  = c(1, 5),
+  burnout_T4                  = c(1, 5),
+  academic_self_efficacy_T2   = c(1, 7),
+  academic_self_efficacy_T3   = c(1, 7),
+  intrinsic_value_T2          = c(1, 7),
+  intrinsic_value_T3          = c(1, 7),
+  socioemotional_curiosity_T2 = c(1, 5),
+  socioemotional_curiosity_T3 = c(1, 5),
+  interest_curiosity_T2       = c(1, 5),
+  interest_curiosity_T3       = c(1, 5),
+  deprivation_curiosity_T2    = c(1, 5),
+  deprivation_curiosity_T3    = c(1, 5),
+  cognitive_curiosity_T2      = c(1, 5),
+  cognitive_curiosity_T3      = c(1, 5),
+  grit_T2                     = c(1, 5),
+  grit_T3                     = c(1, 5)
 )
 
 check_scale_range <- function(data, ranges) {
@@ -131,15 +120,20 @@ check_scale_range <- function(data, ranges) {
 
 check_scale_range(dat, SCALE_RANGES)
 
-# --- 1.4 必需列检查 ---
+# --- 1.3 必需列检查 ---
 REQUIRED_VARS <- c(
   "final_id", "sex_T1", "parent_SES_T2",
   "student_overparenting_T2", "parent_overparenting_T2",
   "student_autonomy_support_T2", "parent_autonomy_support_T2",
   "burnout_T2", "burnout_T4",
-  "self_efficacy_T3", "intrinsic_value_T3",
-  "self_efficacy_T2", "intrinsic_value_T2",
-  "has_T2_parent", "has_T3", "has_T4"
+  "has_T2_parent", "has_T3", "has_T4",
+  "academic_self_efficacy_T2", "academic_self_efficacy_T3",
+  "intrinsic_value_T2", "intrinsic_value_T3",
+  "socioemotional_curiosity_T2", "socioemotional_curiosity_T3",
+  "interest_curiosity_T2", "interest_curiosity_T3",
+  "deprivation_curiosity_T2", "deprivation_curiosity_T3",
+  "cognitive_curiosity_T2", "cognitive_curiosity_T3",
+  "grit_T2", "grit_T3"
 )
 
 missing_vars <- setdiff(REQUIRED_VARS, names(dat))
@@ -148,9 +142,7 @@ if (length(missing_vars) > 0) {
 }
 cat("\n所有必需变量已确认存在。\n")
 
-# --- 1.5 设计性筛选 ---
-# 仅要求参与者来自相关测量波次, 不按预测变量组合预筛选
-# 模型特异性 listwise deletion 在 run_mediated_rsa() 内部完成
+# --- 1.4 设计性筛选 ---
 dat_analysis <- dat %>%
   filter(has_T2_parent == 1, has_T3 == 1, has_T4 == 1)
 
@@ -163,8 +155,8 @@ cat("设计性筛选后样本量 (has_T2_parent + has_T3 + has_T4):",
 # =============================================================================
 
 # --- 2.1 量表中点 (用于预测变量 midpoint centering) ---
-OVERPARENTING_MIDPOINT      <- 3   # 过度养育 1-5 量表
-AUTONOMY_SUPPORT_MIDPOINT   <- 4   # 自主支持 1-7 量表
+OVERPARENTING_MIDPOINT    <- 3   # 过度养育 1-5 量表
+AUTONOMY_SUPPORT_MIDPOINT <- 4   # 自主支持 1-7 量表
 
 # --- 2.2 预测变量 midpoint centering ---
 dat_analysis <- dat_analysis %>%
@@ -176,7 +168,6 @@ dat_analysis <- dat_analysis %>%
   )
 
 # --- 2.3 控制变量均值中心化 ---
-# 使得模型截距 = 控制变量取样本均值时的预测值, 修正 3D 绘图的 Z 轴高度
 dat_analysis <- dat_analysis %>%
   mutate(
     sex_T1_c = as.numeric(sex_T1) -
@@ -184,14 +175,25 @@ dat_analysis <- dat_analysis %>%
     ses_control_c = as.numeric(parent_SES_T2) -
       mean(as.numeric(parent_SES_T2), na.rm = TRUE),
     baseline_burnout_c = as.numeric(burnout_T2) -
-      mean(as.numeric(burnout_T2), na.rm = TRUE),
-    self_efficacy_T2_c = as.numeric(self_efficacy_T2) -
-      mean(as.numeric(self_efficacy_T2), na.rm = TRUE),
-    intrinsic_value_T2_c = as.numeric(intrinsic_value_T2) -
-      mean(as.numeric(intrinsic_value_T2), na.rm = TRUE),
-    epistemic_curiosity_interest_T2_c = as.numeric(epistemic_curiosity_interest_T2) -
-      mean(as.numeric(epistemic_curiosity_interest_T2), na.rm = TRUE)
+      mean(as.numeric(burnout_T2), na.rm = TRUE)
   )
+
+# 中介变量 T2 前测均值中心化 (批量处理)
+MEDIATOR_T2_VARS <- c(
+  "academic_self_efficacy_T2",
+  "intrinsic_value_T2",
+  "socioemotional_curiosity_T2",
+  "interest_curiosity_T2",
+  "deprivation_curiosity_T2",
+  "cognitive_curiosity_T2",
+  "grit_T2"
+)
+
+for (v in MEDIATOR_T2_VARS) {
+  v_c <- paste0(v, "_c")
+  dat_analysis[[v_c]] <- as.numeric(dat_analysis[[v]]) -
+    mean(as.numeric(dat_analysis[[v]]), na.rm = TRUE)
+}
 
 # --- 2.4 多项式项 ---
 dat_analysis <- dat_analysis %>%
@@ -507,9 +509,6 @@ run_mediated_rsa <- function(data,
 # 第 4 部分: 响应面绘图函数
 # =============================================================================
 
-# 由于控制变量已均值中心化, 模型截距对应控制变量取样本均值时的预测值,
-# 可直接传入 plotRSA 而不会产生 sex=0, SES=0 等无意义参考点。
-
 plot_response_surface <- function(coefs, title = "",
                                   xlim = c(-2, 2), ylim = c(-2, 2),
                                   zlim = NULL,
@@ -647,22 +646,22 @@ print_results <- function(result, model_label = "Model") {
 
   cat("--- a 路径模型 (多项式 -> 中介变量) ---\n")
   cat("公式:", deparse(result$formula_a, width.cutoff = 200), "\n")
-  cat("R² =", round(summary(result$model_a)$r.squared, 4),
-      " Adj.R² =", round(summary(result$model_a)$adj.r.squared, 4), "\n")
+  cat("R2 =", round(summary(result$model_a)$r.squared, 4),
+      " Adj.R2 =", round(summary(result$model_a)$adj.r.squared, 4), "\n")
   print(summary(result$model_a)$coefficients)
   cat("\n")
 
   cat("--- b/c' 路径模型 (多项式 + 中介 -> 结果变量) ---\n")
   cat("公式:", deparse(result$formula_b, width.cutoff = 200), "\n")
-  cat("R² =", round(summary(result$model_b)$r.squared, 4),
-      " Adj.R² =", round(summary(result$model_b)$adj.r.squared, 4), "\n")
+  cat("R2 =", round(summary(result$model_b)$r.squared, 4),
+      " Adj.R2 =", round(summary(result$model_b)$adj.r.squared, 4), "\n")
   print(summary(result$model_b)$coefficients)
   cat("\n")
 
   cat("--- 总效应模型 (多项式 -> 结果变量, 不含中介) ---\n")
   cat("公式:", deparse(result$formula_total, width.cutoff = 200), "\n")
-  cat("R² =", round(summary(result$model_total)$r.squared, 4),
-      " Adj.R² =", round(summary(result$model_total)$adj.r.squared, 4), "\n")
+  cat("R2 =", round(summary(result$model_total)$r.squared, 4),
+      " Adj.R2 =", round(summary(result$model_total)$adj.r.squared, 4), "\n")
   print(summary(result$model_total)$coefficients)
   cat("\n")
 
@@ -771,204 +770,153 @@ suggest_alpha_paths <- function(result, x_var, y_var, x2_var, xy_var, y2_var) {
 
 
 # =============================================================================
-# 第 8 部分: 运行正式中介分析
+# 第 8 部分: 运行正式中介分析 (2 预测变量组合 × 7 中介变量 = 14 个模型)
 # =============================================================================
 
 # 基础控制变量 (均值中心化版本)
 CTRL_BASE <- c("sex_T1_c", "ses_control_c", "baseline_burnout_c")
 
-
-# =============================================
-# 主模型 1: 过度养育 -> 自我效能感 -> 学业倦怠
-# =============================================
-
-cat("\n###############################################\n")
-cat("# 主模型 1: 过度养育 -> self_efficacy_T3 -> burnout_T4\n")
-cat("###############################################\n\n")
-
-result_op_se <- run_mediated_rsa(
-  data    = dat_analysis,
-  x_var   = "X_op",       y_var  = "Y_op",
-  x2_var  = "X_op2",      xy_var = "X_op_Y_op",   y2_var = "Y_op2",
-  m_var   = "self_efficacy_T3",
-  z_var   = "burnout_T4",
-  control_vars_a     = c(CTRL_BASE, "self_efficacy_T2_c"),
-  control_vars_b     = c(CTRL_BASE, "self_efficacy_T2_c"),
-  control_vars_total = CTRL_BASE,
-  sd_pooled = SD_pooled_op,
-  n_boot    = 5000
+# --- 中介变量配置 ---
+MEDIATOR_SPECS <- list(
+  list(m_t3 = "academic_self_efficacy_T3",
+       m_t2 = "academic_self_efficacy_T2",
+       label_en = "Academic Self-Efficacy",
+       label_cn = "学业自我效能感"),
+  list(m_t3 = "intrinsic_value_T3",
+       m_t2 = "intrinsic_value_T2",
+       label_en = "Intrinsic Value",
+       label_cn = "内在价值"),
+  list(m_t3 = "socioemotional_curiosity_T3",
+       m_t2 = "socioemotional_curiosity_T2",
+       label_en = "Socioemotional Curiosity",
+       label_cn = "社会情感好奇心"),
+  list(m_t3 = "interest_curiosity_T3",
+       m_t2 = "interest_curiosity_T2",
+       label_en = "Interest Curiosity",
+       label_cn = "兴趣型好奇心"),
+  list(m_t3 = "deprivation_curiosity_T3",
+       m_t2 = "deprivation_curiosity_T2",
+       label_en = "Deprivation Curiosity",
+       label_cn = "剥夺型好奇心"),
+  list(m_t3 = "cognitive_curiosity_T3",
+       m_t2 = "cognitive_curiosity_T2",
+       label_en = "Cognitive Curiosity",
+       label_cn = "认知性好奇心"),
+  list(m_t3 = "grit_T3",
+       m_t2 = "grit_T2",
+       label_en = "Grit",
+       label_cn = "坚毅")
 )
-print_results(result_op_se,
-  "主模型 1: 过度养育 -> 自我效能感 -> 学业倦怠")
-suggest_alpha_paths(result_op_se,
-  "X_op", "Y_op", "X_op2", "X_op_Y_op", "Y_op2")
-export_results(result_op_se,
-  "results_overparenting_selfefficacy.xlsx")
 
-
-# =============================================
-# 主模型 2: 过度养育 -> 内在价值 -> 学业倦怠
-# =============================================
-
-cat("\n###############################################\n")
-cat("# 主模型 2: 过度养育 -> intrinsic_value_T3 -> burnout_T4\n")
-cat("###############################################\n\n")
-
-result_op_iv <- run_mediated_rsa(
-  data    = dat_analysis,
-  x_var   = "X_op",       y_var  = "Y_op",
-  x2_var  = "X_op2",      xy_var = "X_op_Y_op",   y2_var = "Y_op2",
-  m_var   = "intrinsic_value_T3",
-  z_var   = "burnout_T4",
-  control_vars_a     = c(CTRL_BASE, "intrinsic_value_T2_c"),
-  control_vars_b     = c(CTRL_BASE, "intrinsic_value_T2_c"),
-  control_vars_total = CTRL_BASE,
-  sd_pooled = SD_pooled_op,
-  n_boot    = 5000
+# --- 预测变量组合配置 ---
+PREDICTOR_SPECS <- list(
+  list(x = "X_op", y = "Y_op",
+       x2 = "X_op2", xy = "X_op_Y_op", y2 = "Y_op2",
+       sd_pooled = SD_pooled_op,
+       label_en = "Overparenting", label_cn = "过度养育", tag = "op"),
+  list(x = "X_as", y = "Y_as",
+       x2 = "X_as2", xy = "X_as_Y_as", y2 = "Y_as2",
+       sd_pooled = SD_pooled_as,
+       label_en = "Autonomy Support", label_cn = "自主支持", tag = "as")
 )
-print_results(result_op_iv,
-  "主模型 2: 过度养育 -> 内在价值 -> 学业倦怠")
-suggest_alpha_paths(result_op_iv,
-  "X_op", "Y_op", "X_op2", "X_op_Y_op", "Y_op2")
-export_results(result_op_iv,
-  "results_overparenting_intrinsicvalue.xlsx")
 
+# --- 批量运行所有 14 个模型 ---
+all_results <- list()
+model_counter <- 0
 
-# =============================================
-# 主模型 3: 自主支持 -> 自我效能感 -> 学业倦怠
-# =============================================
+for (pred in PREDICTOR_SPECS) {
+  for (med in MEDIATOR_SPECS) {
+    model_counter <- model_counter + 1
+    m_t2_c    <- paste0(med$m_t2, "_c")
+    model_key <- paste0(pred$tag, "__", gsub("_T3$", "", med$m_t3))
 
-cat("\n###############################################\n")
-cat("# 主模型 3: 自主支持 -> self_efficacy_T3 -> burnout_T4\n")
-cat("###############################################\n\n")
+    label_cn <- paste0(pred$label_cn, " -> ", med$label_cn, " -> 学业倦怠")
+    label_en <- paste0(pred$label_en, " -> ", med$label_en, " -> Burnout")
 
-result_as_se <- run_mediated_rsa(
-  data    = dat_analysis,
-  x_var   = "X_as",       y_var  = "Y_as",
-  x2_var  = "X_as2",      xy_var = "X_as_Y_as",   y2_var = "Y_as2",
-  m_var   = "self_efficacy_T3",
-  z_var   = "burnout_T4",
-  control_vars_a     = c(CTRL_BASE, "self_efficacy_T2_c"),
-  control_vars_b     = c(CTRL_BASE, "self_efficacy_T2_c"),
-  control_vars_total = CTRL_BASE,
-  sd_pooled = SD_pooled_as,
-  n_boot    = 5000
-)
-print_results(result_as_se,
-  "主模型 3: 自主支持 -> 自我效能感 -> 学业倦怠")
-suggest_alpha_paths(result_as_se,
-  "X_as", "Y_as", "X_as2", "X_as_Y_as", "Y_as2")
-export_results(result_as_se,
-  "results_autonomysupport_selfefficacy.xlsx")
+    cat("\n###############################################\n")
+    cat("# 模型", model_counter, "/14:", label_cn, "\n")
+    cat("###############################################\n\n")
 
+    result <- run_mediated_rsa(
+      data    = dat_analysis,
+      x_var   = pred$x,   y_var  = pred$y,
+      x2_var  = pred$x2,  xy_var = pred$xy,  y2_var = pred$y2,
+      m_var   = med$m_t3,
+      z_var   = "burnout_T4",
+      control_vars_a     = c(CTRL_BASE, m_t2_c),
+      control_vars_b     = c(CTRL_BASE, m_t2_c),
+      control_vars_total = CTRL_BASE,
+      sd_pooled = pred$sd_pooled,
+      n_boot    = 5000
+    )
 
-# =============================================
-# 主模型 4: 自主支持 -> 内在价值 -> 学业倦怠
-# =============================================
+    print_results(result, label_cn)
+    suggest_alpha_paths(result, pred$x, pred$y, pred$x2, pred$xy, pred$y2)
 
-cat("\n###############################################\n")
-cat("# 主模型 4: 自主支持 -> intrinsic_value_T3 -> burnout_T4\n")
-cat("###############################################\n\n")
+    out_file <- paste0("results_", pred$tag, "_",
+                       gsub("_T3$", "", med$m_t3), ".xlsx")
+    export_results(result, out_file, label_cn)
 
-result_as_iv <- run_mediated_rsa(
-  data    = dat_analysis,
-  x_var   = "X_as",       y_var  = "Y_as",
-  x2_var  = "X_as2",      xy_var = "X_as_Y_as",   y2_var = "Y_as2",
-  m_var   = "intrinsic_value_T3",
-  z_var   = "burnout_T4",
-  control_vars_a     = c(CTRL_BASE, "intrinsic_value_T2_c"),
-  control_vars_b     = c(CTRL_BASE, "intrinsic_value_T2_c"),
-  control_vars_total = CTRL_BASE,
-  sd_pooled = SD_pooled_as,
-  n_boot    = 5000
-)
-print_results(result_as_iv,
-  "主模型 4: 自主支持 -> 内在价值 -> 学业倦怠")
-suggest_alpha_paths(result_as_iv,
-  "X_as", "Y_as", "X_as2", "X_as_Y_as", "Y_as2")
-export_results(result_as_iv,
-  "results_autonomysupport_intrinsicvalue.xlsx")
+    all_results[[model_key]] <- result
+  }
+}
 
-
-# =============================================
-# 扩展模型: 自主支持 -> 兴趣型好奇心 -> 学业倦怠
-# =============================================
-
-cat("\n###############################################\n")
-cat("# 扩展: 自主支持 -> epistemic_curiosity_interest_T3 -> burnout_T4\n")
-cat("###############################################\n\n")
-
-result_as_cur <- run_mediated_rsa(
-  data    = dat_analysis,
-  x_var   = "X_as",       y_var  = "Y_as",
-  x2_var  = "X_as2",      xy_var = "X_as_Y_as",   y2_var = "Y_as2",
-  m_var   = "epistemic_curiosity_interest_T3",
-  z_var   = "burnout_T4",
-  control_vars_a     = c(CTRL_BASE, "epistemic_curiosity_interest_T2_c"),
-  control_vars_b     = c(CTRL_BASE, "epistemic_curiosity_interest_T2_c"),
-  control_vars_total = CTRL_BASE,
-  sd_pooled = SD_pooled_as,
-  n_boot    = 5000
-)
-print_results(result_as_cur,
-  "扩展: 自主支持 -> 兴趣型好奇心 -> 学业倦怠")
-suggest_alpha_paths(result_as_cur,
-  "X_as", "Y_as", "X_as2", "X_as_Y_as", "Y_as2")
-export_results(result_as_cur,
-  "results_autonomysupport_curiosity.xlsx")
+cat("\n所有 14 个模型运行完毕。\n")
 
 
 # =============================================================================
-# 第 9 部分: 响应面绘图
+# 第 9 部分: 响应面绘图 (按预测变量组合分别生成 PDF)
 # =============================================================================
 
-# 辅助: 提取绘图用系数向量 (b1–b5 + 截距)
 extract_plot_coefs <- function(model, x_var, y_var, x2_var, xy_var, y2_var) {
   cc <- coef(model)
   c(cc[x_var], cc[y_var], cc[x2_var], cc[xy_var], cc[y2_var], cc["(Intercept)"])
 }
 
-# --- 以主模型 1 为例 (过度养育 -> 自我效能感 -> 学业倦怠) ---
-cat("\n生成响应面图 (主模型 1) ...\n")
+for (pred in PREDICTOR_SPECS) {
+  pdf_file <- paste0("response_surface_plots_", pred$tag, ".pdf")
+  cat("\n生成响应面图:", pdf_file, "...\n")
+  pdf(pdf_file, width = 10, height = 8)
 
-a_coefs_1 <- extract_plot_coefs(result_op_se$model_a,
-  "X_op", "Y_op", "X_op2", "X_op_Y_op", "Y_op2")
-t_coefs_1 <- extract_plot_coefs(result_op_se$model_total,
-  "X_op", "Y_op", "X_op2", "X_op_Y_op", "Y_op2")
-c_coefs_1 <- extract_plot_coefs(result_op_se$model_b,
-  "X_op", "Y_op", "X_op2", "X_op_Y_op", "Y_op2")
+  for (med in MEDIATOR_SPECS) {
+    model_key <- paste0(pred$tag, "__", gsub("_T3$", "", med$m_t3))
+    res <- all_results[[model_key]]
+    if (is.null(res)) next
 
-pdf("response_surface_plots_model1.pdf", width = 10, height = 8)
+    a_coefs <- extract_plot_coefs(res$model_a,
+      pred$x, pred$y, pred$x2, pred$xy, pred$y2)
+    t_coefs <- extract_plot_coefs(res$model_total,
+      pred$x, pred$y, pred$x2, pred$xy, pred$y2)
 
-plot_response_surface(a_coefs_1,
-  title = "a path: Overparenting -> Self-Efficacy",
-  xlab = "Parent overparenting (X)", ylab = "Student overparenting (Y)",
-  zlab = "Self-Efficacy (M)")
+    plot_response_surface(a_coefs,
+      title = paste0("a path: ", pred$label_en, " -> ", med$label_en),
+      xlab = paste0("Parent ", pred$label_en, " (X)"),
+      ylab = paste0("Student ", pred$label_en, " (Y)"),
+      zlab = med$label_en)
 
-plot_response_surface(t_coefs_1,
-  title = "Total Effect: Overparenting -> Burnout",
-  xlab = "Parent overparenting (X)", ylab = "Student overparenting (Y)",
-  zlab = "Burnout (Z)")
+    plot_response_surface(t_coefs,
+      title = paste0("Total: ", pred$label_en, " -> Burnout"),
+      xlab = paste0("Parent ", pred$label_en, " (X)"),
+      ylab = paste0("Student ", pred$label_en, " (Y)"),
+      zlab = "Burnout")
 
-plot_response_surface(c_coefs_1,
-  title = "Direct Effect (c'): Overparenting -> Burnout",
-  xlab = "Parent overparenting (X)", ylab = "Student overparenting (Y)",
-  zlab = "Burnout (Z)")
+    ie_coefs <- a_coefs[1:5] * res$coefs$beta
+    ie_b0    <- a_coefs[6]    * res$coefs$beta
+    plot_response_surface(c(ie_coefs, ie_b0),
+      title = paste0("Indirect: ", pred$label_en, " -> ",
+                     med$label_en, " -> Burnout"),
+      xlab = paste0("Parent ", pred$label_en, " (X)"),
+      ylab = paste0("Student ", pred$label_en, " (Y)"),
+      zlab = "Indirect Effect")
 
-ie_coefs_1 <- a_coefs_1[1:5] * result_op_se$coefs$beta
-ie_b0_1    <- a_coefs_1[6]    * result_op_se$coefs$beta
-plot_response_surface(c(ie_coefs_1, ie_b0_1),
-  title = "Indirect Effect: Overparenting -> SE -> Burnout",
-  xlab = "Parent overparenting (X)", ylab = "Student overparenting (Y)",
-  zlab = "Indirect Effect on Burnout")
+    plot_line_effects(a_coefs, pred$sd_pooled,
+      title = paste0("a path (", med$label_en, ")"),
+      ylab = paste0("Predicted ", med$label_en))
+  }
 
-plot_line_effects(a_coefs_1, SD_pooled_op,
-  title = "a path (SE)", ylab = "Predicted Self-Efficacy")
-plot_line_effects(t_coefs_1, SD_pooled_op,
-  title = "Total Effect", ylab = "Predicted Burnout")
-
-dev.off()
-cat("响应面图已保存到: response_surface_plots_model1.pdf\n")
+  dev.off()
+  cat("已保存:", pdf_file, "\n")
+}
 
 
 # =============================================================================
@@ -981,9 +929,13 @@ desc_vars <- c(
   "student_overparenting_T2", "parent_overparenting_T2",
   "student_autonomy_support_T2", "parent_autonomy_support_T2",
   "burnout_T2", "burnout_T4",
-  "self_efficacy_T2", "self_efficacy_T3",
+  "academic_self_efficacy_T2", "academic_self_efficacy_T3",
   "intrinsic_value_T2", "intrinsic_value_T3",
-  "epistemic_curiosity_interest_T2", "epistemic_curiosity_interest_T3"
+  "socioemotional_curiosity_T2", "socioemotional_curiosity_T3",
+  "interest_curiosity_T2", "interest_curiosity_T3",
+  "deprivation_curiosity_T2", "deprivation_curiosity_T3",
+  "cognitive_curiosity_T2", "cognitive_curiosity_T3",
+  "grit_T2", "grit_T3"
 )
 
 desc_vars_available <- desc_vars[desc_vars %in% names(dat_analysis)]
@@ -1016,34 +968,45 @@ print(round(cor(cor_data), 3))
 
 
 # =============================================================================
-# 第 11 部分: 补充分析 — 多重中介比较 (可选)
+# 第 11 部分: 汇总表 — 所有模型的关键间接效应
 # =============================================================================
-#
-# 如需比较两个中介变量的间接效应差异, 可取消以下注释。
-# 注意: 两个模型须基于相同预测变量组合, 但中介变量不同。
-#
-# compare_indirect_effects <- function(result1, result2,
-#                                       effect_name = "IE_misfit_curve",
-#                                       ie_index = NULL) {
-#   idx1 <- which(result1$results_table$Parameter == effect_name)
-#   idx2 <- which(result2$results_table$Parameter == effect_name)
-#   if (length(idx1) == 0 || length(idx2) == 0)
-#     stop("找不到指定的间接效应参数: ", effect_name)
-#
-#   ie1_boot <- result1$boot_results$t[, idx1]
-#   ie2_boot <- result2$boot_results$t[, idx2]
-#
-#   diff_boot <- ie1_boot - ie2_boot
-#   ci_diff   <- quantile(diff_boot, c(0.025, 0.975), na.rm = TRUE)
-#
-#   cat("间接效应差异检验:\n")
-#   cat("  模型 1 IE:", round(result1$results_table$Estimate[idx1], 4), "\n")
-#   cat("  模型 2 IE:", round(result2$results_table$Estimate[idx2], 4), "\n")
-#   cat("  差异:",      round(mean(diff_boot, na.rm = TRUE), 4), "\n")
-#   cat("  95% CI: [",  round(ci_diff[1], 4), ",",
-#       round(ci_diff[2], 4), "]\n")
-#   cat("  显著:", ifelse(ci_diff[1] * ci_diff[2] > 0, "是", "否"), "\n")
-# }
+
+cat("\n--- 所有模型间接效应汇总 ---\n\n")
+
+summary_rows <- list()
+
+for (pred in PREDICTOR_SPECS) {
+  for (med in MEDIATOR_SPECS) {
+    model_key <- paste0(pred$tag, "__", gsub("_T3$", "", med$m_t3))
+    res <- all_results[[model_key]]
+    if (is.null(res)) next
+
+    ie_rows <- res$results_table[grep("^IE_", res$results_table$Parameter), ]
+    for (j in seq_len(nrow(ie_rows))) {
+      summary_rows[[length(summary_rows) + 1]] <- data.frame(
+        Predictor = pred$label_en,
+        Mediator  = med$label_en,
+        N         = res$n,
+        Effect    = ie_rows$Parameter[j],
+        Estimate  = ie_rows$Estimate[j],
+        SE        = ie_rows$SE[j],
+        CI_Lo_Perc = ie_rows$CI_Lower_Perc[j],
+        CI_Hi_Perc = ie_rows$CI_Upper_Perc[j],
+        Sig_Perc   = ie_rows$Sig_Perc[j],
+        CI_Lo_BCa  = ie_rows$CI_Lower_BCa[j],
+        CI_Hi_BCa  = ie_rows$CI_Upper_BCa[j],
+        Sig_BCa    = ie_rows$Sig_BCa[j],
+        stringsAsFactors = FALSE
+      )
+    }
+  }
+}
+
+summary_table <- do.call(rbind, summary_rows)
+print(summary_table, row.names = FALSE)
+
+write_xlsx(list(IE_Summary = summary_table), path = "results_all_indirect_effects_summary.xlsx")
+cat("\n汇总表已导出到: results_all_indirect_effects_summary.xlsx\n")
 
 
 # =============================================================================
@@ -1052,24 +1015,22 @@ print(round(cor(cor_data), 3))
 
 cat("\n")
 cat("=================================================================\n")
-cat("  分析完成!\n")
+cat("  分析完成! 共运行 14 个中介 RSA 模型\n")
 cat("=================================================================\n\n")
-cat("关键改进说明:\n")
-cat("  1. 正式中介变量: self_efficacy_T3, intrinsic_value_T3,\n")
-cat("     epistemic_curiosity_interest_T3 (从 matching_full 合并)\n")
-cat("  2. 纵向设计控制: a/b 路径控制 M_T2 (中介变量前测)\n")
-cat("  3. 路径特异性控制变量: total 模型不包含 M_T2\n")
-cat("  4. 模型特异性 listwise deletion (非预筛选)\n")
-cat("  5. 控制变量均值中心化 (修正绘图截距)\n")
-cat("  6. 量表范围检查、必需列检查、零变异控制变量自动丢弃\n")
-cat("  7. Bootstrap tryCatch 防止奇异样本中断;\n")
-cat("     间接效应同时报告 percentile 和 BCa CI\n")
-cat("\n")
+cat("预测变量组合:\n")
+cat("  (1) 过度养育 (parent vs student)\n")
+cat("  (2) 自主支持 (parent vs student)\n\n")
+cat("中介变量 (T3, 各控制 T2 前测):\n")
+cat("  - academic_self_efficacy  (学业自我效能感)\n")
+cat("  - intrinsic_value         (内在价值)\n")
+cat("  - socioemotional_curiosity (社会情感好奇心)\n")
+cat("  - interest_curiosity      (兴趣型好奇心)\n")
+cat("  - deprivation_curiosity   (剥夺型好奇心)\n")
+cat("  - cognitive_curiosity     (认知性好奇心)\n")
+cat("  - grit                    (坚毅)\n\n")
 cat("输出文件:\n")
-cat("  - results_overparenting_selfefficacy.xlsx\n")
-cat("  - results_overparenting_intrinsicvalue.xlsx\n")
-cat("  - results_autonomysupport_selfefficacy.xlsx\n")
-cat("  - results_autonomysupport_intrinsicvalue.xlsx\n")
-cat("  - results_autonomysupport_curiosity.xlsx\n")
-cat("  - response_surface_plots_model1.pdf\n")
+cat("  - results_op_*.xlsx / results_as_*.xlsx  (各模型详细结果)\n")
+cat("  - results_all_indirect_effects_summary.xlsx  (间接效应汇总)\n")
+cat("  - response_surface_plots_op.pdf  (过度养育响应面图)\n")
+cat("  - response_surface_plots_as.pdf  (自主支持响应面图)\n")
 cat("\n")
