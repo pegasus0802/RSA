@@ -3,11 +3,11 @@
 # "disaggregated approach"（分解法）
 #
 # 研究设计:
-#   X (学生报告教养) + Y (家长报告教养) → M (T3 中介变量) → Z (T4 学业倦怠)
+#   X (家长报告教养) + Y (学生报告教养) → M (T3 中介变量) → Z (T4 学业倦怠)
 #
-# 核心预测变量组合:
-#   (1) 过度养育: X = student_overparenting_T2, Y = parent_overparenting_T2
-#   (2) 自主支持: X = student_autonomy_support_T2, Y = parent_autonomy_support_T2
+# 核心预测变量组合 (与纵向 RSA 代码保持一致: X=家长, Y=学生):
+#   (1) 过度养育: X = parent_overparenting_T2, Y = student_overparenting_T2
+#   (2) 自主支持: X = parent_autonomy_support_T2, Y = student_autonomy_support_T2
 #
 # 主中介变量 (T3):
 #   - 自我效能感 (self_efficacy_T3)
@@ -97,21 +97,22 @@ cat("分析样本量:", nrow(dat_analysis), "\n")
 # 例如: 如果量表为 1-5 分，中点 = 3
 #        如果量表为 1-7 分，中点 = 4
 
-OVERPARENTING_MIDPOINT <- 3     # 过度养育量表中点 (假设 1-5 量表)
-AUTONOMY_SUPPORT_MIDPOINT <- 3  # 自主支持量表中点 (假设 1-5 量表)
-BURNOUT_MIDPOINT <- 3           # 学业倦怠量表中点 (假设 1-5 量表)
-MEDIATOR_MIDPOINT <- 3          # 中介变量量表中点 (假设 1-5 量表)
+OVERPARENTING_MIDPOINT <- 3     # 过度养育量表中点 (1-5 量表, 中点 = 3)
+AUTONOMY_SUPPORT_MIDPOINT <- 4  # 自主支持量表中点 (1-7 量表, 中点 = 4)
+
+# 以下中点仅在需要中心化中介变量时使用 (可选, 不影响回归系数)
+MEDIATOR_MIDPOINT <- 3          # 中介变量量表中点 (请根据实际量表调整)
 
 # --- 2.2 对预测变量进行中心化 ---
 dat_analysis <- dat_analysis %>%
   mutate(
-    # 过度养育 (midpoint centering)
-    X_op = student_overparenting_T2 - OVERPARENTING_MIDPOINT,
-    Y_op = parent_overparenting_T2  - OVERPARENTING_MIDPOINT,
+    # 过度养育 (midpoint centering) — X=家长, Y=学生 (与纵向 RSA 一致)
+    X_op = parent_overparenting_T2  - OVERPARENTING_MIDPOINT,
+    Y_op = student_overparenting_T2 - OVERPARENTING_MIDPOINT,
 
-    # 自主支持 (midpoint centering)
-    X_as = student_autonomy_support_T2 - AUTONOMY_SUPPORT_MIDPOINT,
-    Y_as = parent_autonomy_support_T2  - AUTONOMY_SUPPORT_MIDPOINT
+    # 自主支持 (midpoint centering) — X=家长, Y=学生 (与纵向 RSA 一致)
+    X_as = parent_autonomy_support_T2  - AUTONOMY_SUPPORT_MIDPOINT,
+    Y_as = student_autonomy_support_T2 - AUTONOMY_SUPPORT_MIDPOINT
   )
 
 # --- 2.3 构造五个多项式项 ---
@@ -152,27 +153,31 @@ cat("自主支持 pooled SD:", round(SD_pooled_as, 3), "\n")
 # dat_analysis <- dat_analysis %>%
 #   left_join(t3_mediators, by = "final_id")
 
-# 中心化中介变量 (如果需要)
+# 定义中介变量 (不中心化, 与纵向 RSA 代码对结果变量的处理一致)
+# 注: 中介变量是否中心化不影响回归系数, 只改变截距
 # dat_analysis <- dat_analysis %>%
 #   mutate(
-#     M_se  = self_efficacy_T3 - MEDIATOR_MIDPOINT,
-#     M_iv  = intrinsic_value_T3 - MEDIATOR_MIDPOINT,
-#     M_cur = epistemic_curiosity_interest_T3 - MEDIATOR_MIDPOINT
+#     M_se  = self_efficacy_T3,
+#     M_iv  = intrinsic_value_T3,
+#     M_cur = epistemic_curiosity_interest_T3
 #   )
 
-# 中心化结果变量
+# 结果变量 (不中心化, 与纵向 RSA 代码保持一致)
 dat_analysis <- dat_analysis %>%
   mutate(
-    Z_burnout = burnout_T4 - BURNOUT_MIDPOINT
+    Z_burnout = burnout_T4
   )
 
 # --- 2.6 定义控制变量 ---
-# 将性别转为数值型 (0/1)，SES 保持原样
+# 与纵向 RSA 代码保持一致:
+#   - SES 用家长报告 (parent_SES_T2)
+#   - 基线倦怠不中心化
+#   - 性别保持原始编码 (1=男, 2=女)
 dat_analysis <- dat_analysis %>%
   mutate(
-    sex = as.numeric(as.factor(sex_T1)) - 1,    # 0 = 参考组, 1 = 对比组
-    SES = student_SES_T2,
-    burnout_T2_c = burnout_T2 - BURNOUT_MIDPOINT # T2 倦怠前测 (控制)
+    sex_T1 = as.numeric(sex_T1),               # 保持原始编码 (1/2)
+    ses_control = as.numeric(parent_SES_T2),    # 家长报告 SES
+    baseline_burnout = as.numeric(burnout_T2)   # T2 倦怠前测 (不中心化)
   )
 
 
@@ -557,8 +562,8 @@ run_mediated_rsa <- function(data,
 plot_response_surface <- function(coefs, title = "",
                                   xlim = c(-2, 2), ylim = c(-2, 2),
                                   zlim = NULL,
-                                  xlab = "Student Report (X)",
-                                  ylab = "Parent Report (Y)",
+                                  xlab = "Parent Report (X)",
+                                  ylab = "Student Report (Y)",
                                   zlab = "Outcome") {
 
   bw <- FALSE
@@ -596,8 +601,8 @@ plot_response_surface <- function(coefs, title = "",
 plot_indirect_surface <- function(a_coefs, beta, intercept_a = 0,
                                    title = "Indirect Effect Surface",
                                    xlim = c(-2, 2), ylim = c(-2, 2),
-                                   xlab = "Student Report (X)",
-                                   ylab = "Parent Report (Y)") {
+                                   xlab = "Parent Report (X)",
+                                   ylab = "Student Report (Y)") {
 
   # 间接效应的多项式系数
   ie_coefs <- a_coefs * beta
@@ -918,20 +923,20 @@ cat("\n###############################################\n")
 cat("# 演示分析: 过度养育 → low_efficacy_T3 → burnout_T4\n")
 cat("###############################################\n\n")
 
-# 中心化 low_efficacy_T3 作为演示中介
-dat_analysis$M_demo <- dat_analysis$low_efficacy_T3 - BURNOUT_MIDPOINT
+# low_efficacy_T3 作为演示中介 (不中心化, 与纵向 RSA 代码一致)
+dat_analysis$M_demo <- dat_analysis$low_efficacy_T3
 
 # 运行分析
 result_demo <- run_mediated_rsa(
   data = dat_analysis,
-  x_var = "X_op",         # 学生报告过度养育 (中心化)
-  y_var = "Y_op",         # 家长报告过度养育 (中心化)
+  x_var = "X_op",         # 家长报告过度养育 (中心化)
+  y_var = "Y_op",         # 学生报告过度养育 (中心化)
   x2_var = "X_op2",       # X²
   xy_var = "X_op_Y_op",   # XY
   y2_var = "Y_op2",       # Y²
   m_var = "M_demo",       # 中介: low_efficacy_T3 (演示用)
   z_var = "Z_burnout",    # 结果: burnout_T4
-  control_vars = c("sex", "SES", "burnout_T2_c"),  # 控制变量
+  control_vars = c("sex_T1", "ses_control", "baseline_burnout"),  # 与纵向 RSA 一致
   sd_pooled = SD_pooled_op,
   n_boot = 5000,          # 正式分析建议 5000-10000 次
   conf_level = 0.95
@@ -966,9 +971,9 @@ export_results(result_demo, "results_demo_overparenting_lowefficacy.xlsx")
 #   data = dat_analysis,
 #   x_var = "X_op", y_var = "Y_op",
 #   x2_var = "X_op2", xy_var = "X_op_Y_op", y2_var = "Y_op2",
-#   m_var = "M_se",          # 自我效能感 (中心化)
+#   m_var = "M_se",          # 自我效能感
 #   z_var = "Z_burnout",
-#   control_vars = c("sex", "SES", "burnout_T2_c"),
+#   control_vars = c("sex_T1", "ses_control", "baseline_burnout"),
 #   sd_pooled = SD_pooled_op,
 #   n_boot = 5000
 # )
@@ -985,9 +990,9 @@ export_results(result_demo, "results_demo_overparenting_lowefficacy.xlsx")
 #   data = dat_analysis,
 #   x_var = "X_op", y_var = "Y_op",
 #   x2_var = "X_op2", xy_var = "X_op_Y_op", y2_var = "Y_op2",
-#   m_var = "M_iv",          # 内在价值 (中心化)
+#   m_var = "M_iv",          # 内在价值
 #   z_var = "Z_burnout",
-#   control_vars = c("sex", "SES", "burnout_T2_c"),
+#   control_vars = c("sex_T1", "ses_control", "baseline_burnout"),
 #   sd_pooled = SD_pooled_op,
 #   n_boot = 5000
 # )
@@ -1006,7 +1011,7 @@ export_results(result_demo, "results_demo_overparenting_lowefficacy.xlsx")
 #   x2_var = "X_as2", xy_var = "X_as_Y_as", y2_var = "Y_as2",
 #   m_var = "M_se",
 #   z_var = "Z_burnout",
-#   control_vars = c("sex", "SES", "burnout_T2_c"),
+#   control_vars = c("sex_T1", "ses_control", "baseline_burnout"),
 #   sd_pooled = SD_pooled_as,
 #   n_boot = 5000
 # )
@@ -1025,7 +1030,7 @@ export_results(result_demo, "results_demo_overparenting_lowefficacy.xlsx")
 #   x2_var = "X_as2", xy_var = "X_as_Y_as", y2_var = "Y_as2",
 #   m_var = "M_iv",
 #   z_var = "Z_burnout",
-#   control_vars = c("sex", "SES", "burnout_T2_c"),
+#   control_vars = c("sex_T1", "ses_control", "baseline_burnout"),
 #   sd_pooled = SD_pooled_as,
 #   n_boot = 5000
 # )
@@ -1042,9 +1047,9 @@ export_results(result_demo, "results_demo_overparenting_lowefficacy.xlsx")
 #   data = dat_analysis,
 #   x_var = "X_as", y_var = "Y_as",
 #   x2_var = "X_as2", xy_var = "X_as_Y_as", y2_var = "Y_as2",
-#   m_var = "M_cur",          # 兴趣型好奇心 (中心化)
+#   m_var = "M_cur",          # 兴趣型好奇心
 #   z_var = "Z_burnout",
-#   control_vars = c("sex", "SES", "burnout_T2_c"),
+#   control_vars = c("sex_T1", "ses_control", "baseline_burnout"),
 #   sd_pooled = SD_pooled_as,
 #   n_boot = 5000
 # )
@@ -1097,21 +1102,21 @@ pdf("response_surface_plots_demo.pdf", width = 10, height = 8)
 plot_response_surface(
   a_coefs_demo,
   title = "a path: Overparenting -> Mediator",
-  xlab = "Student Overparenting (X)", ylab = "Parent Overparenting (Y)",
+  xlab = "Parent-reported overparenting (X)", ylab = "Student-reported overparenting (Y)",
   zlab = "Low Efficacy (M)"
 )
 
 plot_response_surface(
   t_coefs_demo,
   title = "Total Effect: Overparenting -> Burnout",
-  xlab = "Student Overparenting (X)", ylab = "Parent Overparenting (Y)",
+  xlab = "Parent-reported overparenting (X)", ylab = "Student-reported overparenting (Y)",
   zlab = "Burnout (Z)"
 )
 
 plot_response_surface(
   c_coefs_demo,
   title = "Direct Effect (c'): Overparenting -> Burnout",
-  xlab = "Student Overparenting (X)", ylab = "Parent Overparenting (Y)",
+  xlab = "Parent-reported overparenting (X)", ylab = "Student-reported overparenting (Y)",
   zlab = "Burnout (Z)"
 )
 
@@ -1121,7 +1126,7 @@ ie_intercept <- a_coefs_demo[6] * result_demo$coefs$beta
 plot_response_surface(
   c(ie_coefs_demo, ie_intercept),
   title = "Indirect Effect Surface",
-  xlab = "Student Overparenting (X)", ylab = "Parent Overparenting (Y)",
+  xlab = "Parent-reported overparenting (X)", ylab = "Student-reported overparenting (Y)",
   zlab = "Indirect Effect on Burnout"
 )
 
@@ -1239,7 +1244,7 @@ cat("\n")
 cat("重要提示:\n")
 cat("  1. 当前演示使用 low_efficacy_T3 作为中介变量 (仅为代码验证)。\n")
 cat("  2. 正式分析请合并 T3 中介变量数据后取消第 8 部分方式 B 的注释。\n")
-cat("  3. 量表中点值 (MIDPOINT) 请根据实际量表范围修改。\n")
+cat("  3. 量表中点已与纵向 RSA 代码一致 (过度养育=3, 自主支持=4)。\n")
 cat("  4. Bootstrap 次数建议正式分析使用 5000-10000 次。\n")
 cat("  5. 结果解释请参考 Fu et al. (2025) 论文中 Table 2 的格式。\n")
 cat("\n")
