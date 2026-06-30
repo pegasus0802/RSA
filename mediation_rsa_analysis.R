@@ -586,20 +586,6 @@ plot_response_surface <- function(coefs, title = "",
   )
 }
 
-plot_indirect_surface <- function(a_coefs, beta, intercept_a = 0,
-                                   title = "Indirect Effect Surface",
-                                   xlim = c(-2, 2), ylim = c(-2, 2),
-                                   xlab = "Parent Report (X)",
-                                   ylab = "Student Report (Y)") {
-  ie_coefs     <- a_coefs * beta
-  ie_intercept <- intercept_a * beta
-  plot_response_surface(
-    coefs = c(ie_coefs, ie_intercept),
-    title = title, xlim = xlim, ylim = ylim,
-    xlab = xlab, ylab = ylab, zlab = "Indirect Effect"
-  )
-}
-
 plot_line_effects <- function(coefs, sd_pooled,
                                title = "",
                                xlab_fit    = "Level of Congruence",
@@ -757,7 +743,8 @@ export_results <- function(result, filename, model_label = "Model") {
                       summary(result$model_b)$adj.r.squared,
                       summary(result$model_total)$adj.r.squared),
     N = result$n,
-    N_boot_failed = result$n_boot_failed
+    N_boot_failed = result$n_boot_failed,
+    N_pa_na = result$n_pa_na
   )
 
   sheets[["Formulas"]] <- data.frame(
@@ -1019,7 +1006,7 @@ for (pred in PREDICTOR_SPECS) {
     res <- all_results_sensitivity[[model_key]]
     if (is.null(res)) next
 
-    ie_rows <- res$results_table[grep("^IE_", res$results_table$Parameter), ]
+    ie_rows <- res$results_table[grep("^(IE_|ind_)", res$results_table$Parameter), ]
     for (j in seq_len(nrow(ie_rows))) {
       sensitivity_summary_rows[[length(sensitivity_summary_rows) + 1]] <- data.frame(
         Predictor = pred$label_en,
@@ -1170,7 +1157,7 @@ for (pred in PREDICTOR_SPECS) {
     res <- all_results[[model_key]]
     if (is.null(res)) next
 
-    ie_rows <- res$results_table[grep("^IE_", res$results_table$Parameter), ]
+    ie_rows <- res$results_table[grep("^(IE_|ind_)", res$results_table$Parameter), ]
     for (j in seq_len(nrow(ie_rows))) {
       summary_rows[[length(summary_rows) + 1]] <- data.frame(
         Predictor = pred$label_en,
