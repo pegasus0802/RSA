@@ -24,7 +24,8 @@
 # 纵向中介设计控制:
 #   - 每个中介模型控制相应中介变量的 T2 前测 (M_T2)
 #   - 控制变量按模型路径区分:
-#       a 路径 / b 路径: sex, SES, burnout_T2, M_T2
+#       a 路径: sex, SES, burnout_T2, M_T2
+#       b 路径: sex, SES, burnout_T2
 #       总效应:          sex, SES, burnout_T2
 #   - 所有控制变量均值中心化 (修正绘图截距)
 #
@@ -73,8 +74,8 @@ SCALE_RANGES <- list(
   parent_overparenting_T2     = c(1, 5),
   student_autonomy_support_T2 = c(1, 7),
   parent_autonomy_support_T2  = c(1, 7),
-  burnout_T2                  = c(1, 5),
-  burnout_T4                  = c(1, 5),
+  burnout_T2                  = c(1, 7),
+  burnout_T4                  = c(1, 7),
   academic_self_efficacy_T2   = c(1, 7),
   academic_self_efficacy_T3   = c(1, 7),
   intrinsic_value_T2          = c(1, 7),
@@ -765,6 +766,49 @@ suggest_alpha_paths <- function(result, x_var, y_var, x2_var, xy_var, y2_var) {
     cat("  -> 均不显著: 不一致线上无显著 alpha 路径\n")
   }
   cat("\n")
+
+  # ---- 主轴旋转与侧向平移检查 ----
+  cat("主轴特征 (a 路径响应面):\n")
+
+  rt <- result$results_table
+  p11_row <- rt[rt$Parameter == "PA_p11", ]
+  p10_row <- rt[rt$Parameter == "PA_p10", ]
+
+  if (nrow(p11_row) == 1 && !is.na(p11_row$CI_Lower_Perc) && !is.na(p11_row$CI_Upper_Perc)) {
+    p11_est <- p11_row$Estimate
+    p11_lo  <- p11_row$CI_Lower_Perc
+    p11_hi  <- p11_row$CI_Upper_Perc
+    rotation_sig <- !(p11_lo <= 1 && p11_hi >= 1)
+    cat(sprintf("  第一主轴斜率 (p11): %.3f, 95%% CI [%.3f, %.3f] %s\n",
+                p11_est, p11_lo, p11_hi,
+                ifelse(rotation_sig, "-> CI 不包含 1, 存在显著旋转",
+                                     "-> CI 包含 1, 无显著旋转")))
+    if (rotation_sig) {
+      cat("  ** 注意: 响应面存在旋转, 最大/最小值脊线不在 LOC 线上。\n")
+      cat("     建议额外检查沿第一主轴的效应作为 alpha path 候选。\n")
+    }
+  } else {
+    cat("  第一主轴斜率 (p11): 无法计算 (可能 b4 ≈ 0)\n")
+  }
+
+  if (nrow(p10_row) == 1 && !is.na(p10_row$CI_Lower_Perc) && !is.na(p10_row$CI_Upper_Perc)) {
+    p10_est <- p10_row$Estimate
+    p10_lo  <- p10_row$CI_Lower_Perc
+    p10_hi  <- p10_row$CI_Upper_Perc
+    shift_sig <- !(p10_lo <= 0 && p10_hi >= 0)
+    cat(sprintf("  第一主轴截距 (p10): %.3f, 95%% CI [%.3f, %.3f] %s\n",
+                p10_est, p10_lo, p10_hi,
+                ifelse(shift_sig, "-> CI 不包含 0, 存在显著侧向平移",
+                                  "-> CI 包含 0, 无显著侧向平移")))
+    if (shift_sig) {
+      cat("  ** 注意: 响应面存在侧向平移, 过多与不足的效应不对称。\n")
+      cat("     应分别报告 excess 和 deficiency 的瞬时效应。\n")
+    }
+  } else {
+    cat("  第一主轴截距 (p10): 无法计算\n")
+  }
+  cat("\n")
+
   invisible(surface_tests)
 }
 
@@ -813,10 +857,12 @@ PREDICTOR_SPECS <- list(
   list(x = "X_op", y = "Y_op",
        x2 = "X_op2", xy = "X_op_Y_op", y2 = "Y_op2",
        sd_pooled = SD_pooled_op,
+       plot_range = c(-2, 2),
        label_en = "Overparenting", label_cn = "过度养育", tag = "op"),
   list(x = "X_as", y = "Y_as",
        x2 = "X_as2", xy = "X_as_Y_as", y2 = "Y_as2",
        sd_pooled = SD_pooled_as,
+       plot_range = c(-3, 3),
        label_en = "Autonomy Support", label_cn = "自主支持", tag = "as")
 )
 
@@ -844,7 +890,7 @@ for (pred in PREDICTOR_SPECS) {
       m_var   = med$m_t3,
       z_var   = "burnout_T4",
       control_vars_a     = c(CTRL_BASE, m_t2_c),
-      control_vars_b     = c(CTRL_BASE, m_t2_c),
+      control_vars_b     = CTRL_BASE,
       control_vars_total = CTRL_BASE,
       sd_pooled = pred$sd_pooled,
       n_boot    = 5000
@@ -878,6 +924,8 @@ for (pred in PREDICTOR_SPECS) {
   cat("\n生成响应面图:", pdf_file, "...\n")
   pdf(pdf_file, width = 10, height = 8)
 
+  pr <- pred$plot_range
+
   for (med in MEDIATOR_SPECS) {
     model_key <- paste0(pred$tag, "__", gsub("_T3$", "", med$m_t3))
     res <- all_results[[model_key]]
@@ -890,12 +938,14 @@ for (pred in PREDICTOR_SPECS) {
 
     plot_response_surface(a_coefs,
       title = paste0("a path: ", pred$label_en, " -> ", med$label_en),
+      xlim = pr, ylim = pr,
       xlab = paste0("Parent ", pred$label_en, " (X)"),
       ylab = paste0("Student ", pred$label_en, " (Y)"),
       zlab = med$label_en)
 
     plot_response_surface(t_coefs,
       title = paste0("Total: ", pred$label_en, " -> Burnout"),
+      xlim = pr, ylim = pr,
       xlab = paste0("Parent ", pred$label_en, " (X)"),
       ylab = paste0("Student ", pred$label_en, " (Y)"),
       zlab = "Burnout")
@@ -905,6 +955,7 @@ for (pred in PREDICTOR_SPECS) {
     plot_response_surface(c(ie_coefs, ie_b0),
       title = paste0("Indirect: ", pred$label_en, " -> ",
                      med$label_en, " -> Burnout"),
+      xlim = pr, ylim = pr,
       xlab = paste0("Parent ", pred$label_en, " (X)"),
       ylab = paste0("Student ", pred$label_en, " (Y)"),
       zlab = "Indirect Effect")
