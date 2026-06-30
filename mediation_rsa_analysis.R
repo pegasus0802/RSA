@@ -21,13 +21,22 @@
 # 结果变量 (T4):
 #   - burnout_T4 (学业倦怠)
 #
-# 纵向中介设计控制:
-#   - 每个中介模型控制相应中介变量的 T2 前测 (M_T2)
+# 样本筛选:
+#   - has_T2_parent == 1 & has_T3 == 1 & has_T4 == 1 & caregiver_match_T2 == 1
+#
+# 纵向中介设计控制 (主分析):
+#   - a 路径控制 M_T2, b 路径不控制 M_T2
 #   - 控制变量按模型路径区分:
 #       a 路径: sex, SES, burnout_T2, M_T2
 #       b 路径: sex, SES, burnout_T2
-#       总效应:          sex, SES, burnout_T2
+#       总效应: sex, SES, burnout_T2
 #   - 所有控制变量均值中心化 (修正绘图截距)
+#
+# 敏感性分析:
+#   - b 路径也控制 M_T2 (结果见 results_sensitivity_*.xlsx)
+#
+# Pooled SD:
+#   - sqrt((SDx^2 + SDy^2) / 2)，与 Fu et al. 模拟实际使用一致
 #
 # 参考文献:
 #   Fu, S. Q., Dimotakis, N., & Koopman, J. (2025). Mediation testing with
@@ -61,9 +70,18 @@ set.seed(2024)
 # 第 1 部分: 读取数据与变量验证
 # =============================================================================
 
-# --- 1.1 读取 rsa_ready_plus_mediators (所有中介变量已在此 sheet 中) ---
-data_path <- "matched_T2_T3_T4_with_T1sex_parent_caregiver_v4_plus_mediators.xlsx"
-dat <- read_excel(data_path, sheet = "rsa_ready_plus_mediators")
+# --- 1.1 读取数据 (交互式选择文件) ---
+data_path <- file.choose()
+sheet_name <- "rsa_ready_plus_mediators"
+
+available_sheets <- readxl::excel_sheets(data_path)
+if (!sheet_name %in% available_sheets) {
+  stop("Sheet '", sheet_name, "' 未找到。可用 sheets: ",
+       paste(available_sheets, collapse = ", "))
+}
+
+dat <- read_excel(data_path, sheet = sheet_name)
+cat("数据文件:", data_path, "\n")
 cat("数据维度:", nrow(dat), "行 ×", ncol(dat), "列\n")
 cat("变量名:\n")
 print(names(dat))
@@ -128,6 +146,7 @@ REQUIRED_VARS <- c(
   "student_autonomy_support_T2", "parent_autonomy_support_T2",
   "burnout_T2", "burnout_T4",
   "has_T2_parent", "has_T3", "has_T4",
+  "caregiver_match_T2",
   "academic_self_efficacy_T2", "academic_self_efficacy_T3",
   "intrinsic_value_T2", "intrinsic_value_T3",
   "socioemotional_curiosity_T2", "socioemotional_curiosity_T3",
@@ -145,9 +164,10 @@ cat("\n所有必需变量已确认存在。\n")
 
 # --- 1.4 设计性筛选 ---
 dat_analysis <- dat %>%
-  filter(has_T2_parent == 1, has_T3 == 1, has_T4 == 1)
+  filter(has_T2_parent == 1, has_T3 == 1, has_T4 == 1,
+         caregiver_match_T2 == 1)
 
-cat("设计性筛选后样本量 (has_T2_parent + has_T3 + has_T4):",
+cat("设计性筛选后样本量 (has_T2_parent + has_T3 + has_T4 + caregiver_match):",
     nrow(dat_analysis), "\n")
 
 
@@ -208,10 +228,14 @@ dat_analysis <- dat_analysis %>%
   )
 
 # --- 2.5 Pooled SD ---
-SD_pooled_op <- sqrt(var(dat_analysis$X_op, na.rm = TRUE) +
-                       var(dat_analysis$Y_op, na.rm = TRUE))
-SD_pooled_as <- sqrt(var(dat_analysis$X_as, na.rm = TRUE) +
-                       var(dat_analysis$Y_as, na.rm = TRUE))
+# 注: Fu et al. (2025) Appendix C 脚注 1 写作 sqrt(SDx^2 + SDy^2)，
+#     但其模拟代码 (Chunk 30) 实际使用 sd(c(x, y))，即 sqrt((SDx^2 + SDy^2) / 2)。
+#     通过 Table 2 Model 3 反推验证: misfit_slope=0.20, misfit_curve=-0.37,
+#     Deficiency=1.46 → C ≈ 1.70 ≈ sqrt(3) ≈ 1.73，与 /2 公式一致。
+SD_pooled_op <- sqrt((var(dat_analysis$X_op, na.rm = TRUE) +
+                        var(dat_analysis$Y_op, na.rm = TRUE)) / 2)
+SD_pooled_as <- sqrt((var(dat_analysis$X_as, na.rm = TRUE) +
+                        var(dat_analysis$Y_as, na.rm = TRUE)) / 2)
 
 cat("\n过度养育 pooled SD:", round(SD_pooled_op, 3), "\n")
 cat("自主支持 pooled SD:", round(SD_pooled_as, 3), "\n")
@@ -336,7 +360,14 @@ run_mediated_rsa <- function(data,
   a_misfit_excess     <- a_misfit_slope + 2 * a_misfit_curve * sd_pooled
   a_misfit_deficiency <- a_misfit_slope + 2 * a_misfit_curve * (-sd_pooled)
 
-  # ---- 间接效应 ----
+  # ---- 间接效应 (基础分解式系数) ----
+  ind_x  <- a1 * beta
+  ind_y  <- a2 * beta
+  ind_x2 <- a3 * beta
+  ind_xy <- a4 * beta
+  ind_y2 <- a5 * beta
+
+  # ---- 间接效应 (响应面特征) ----
   ie_fit_slope          <- a_fit_slope    * beta
   ie_fit_curve          <- a_fit_curve    * beta
   ie_misfit_slope       <- a_misfit_slope * beta
@@ -368,7 +399,7 @@ run_mediated_rsa <- function(data,
   pa_total <- compute_principal_axes(t1, t2, t3, t4, t5)
 
   # ---- Bootstrap (含 tryCatch) ----
-  N_PARAMS <- 36
+  N_PARAMS <- 41  # 36 原有 + 5 个基础间接系数
 
   boot_func <- function(data, indices) {
     d <- data[indices, ]
@@ -392,9 +423,14 @@ run_mediated_rsa <- function(data,
       a_fh <- a_fs + 2*a_fc*sd_pooled;  a_fl <- a_fs - 2*a_fc*sd_pooled
       a_me <- a_ms + 2*a_mc*sd_pooled;  a_md <- a_ms - 2*a_mc*sd_pooled
 
+      # 基础间接系数
+      bi_x  <- ba1*bb; bi_y  <- ba2*bb; bi_x2 <- ba3*bb
+      bi_xy <- ba4*bb; bi_y2 <- ba5*bb
+
       c(ba1, ba2, ba3, ba4, ba5, bb,
         a_fs, a_fc, a_ms, a_mc,
         a_fh, a_fl, a_me, a_md,
+        bi_x, bi_y, bi_x2, bi_xy, bi_y2,
         a_fs*bb, a_fc*bb, a_ms*bb, a_mc*bb,
         a_fh*bb, a_fl*bb, a_me*bb, a_md*bb,
         bc1+bc2, bc3+bc4+bc5, bc1-bc2, bc3-bc4+bc5,
@@ -407,8 +443,15 @@ run_mediated_rsa <- function(data,
   cat("开始 Bootstrap (", n_boot, " 次) ...\n")
   boot_results <- boot(dat_complete, boot_func, R = n_boot)
 
-  n_failed <- sum(apply(boot_results$t, 1, function(r) any(is.na(r))))
-  if (n_failed > 0) cat("  注意:", n_failed, "/", n_boot, " 次迭代失败 (NA)。\n")
+  # 失败计数: 只统计核心参数 (不含主轴参数) 的 NA
+  pa_indices <- (N_PARAMS - 5):N_PARAMS  # 最后 6 个是主轴参数
+  core_indices <- setdiff(seq_len(N_PARAMS), pa_indices)
+  n_failed <- sum(apply(boot_results$t[, core_indices, drop = FALSE], 1,
+                         function(r) any(is.na(r))))
+  n_pa_na  <- sum(apply(boot_results$t[, pa_indices, drop = FALSE], 1,
+                         function(r) any(is.na(r))))
+  if (n_failed > 0) cat("  注意:", n_failed, "/", n_boot, " 次核心参数迭代失败 (NA)。\n")
+  if (n_pa_na > 0) cat("  信息:", n_pa_na, "/", n_boot, " 次主轴参数为 NA (通常因 b4 ≈ 0)。\n")
   cat("Bootstrap 完成。\n")
 
   # ---- 构建结果表 (Percentile + BCa) ----
@@ -420,6 +463,8 @@ run_mediated_rsa <- function(data,
     "a_fit_slope", "a_fit_curve", "a_misfit_slope", "a_misfit_curve",
     "a_fit_high (+1SD)", "a_fit_low (-1SD)",
     "a_misfit_excess (+1SD)", "a_misfit_deficiency (-1SD)",
+    "ind_X (a1*beta)", "ind_Y (a2*beta)", "ind_X2 (a3*beta)",
+    "ind_XY (a4*beta)", "ind_Y2 (a5*beta)",
     "IE_fit_slope", "IE_fit_curve", "IE_misfit_slope", "IE_misfit_curve",
     "IE_fit_high (+1SD)", "IE_fit_low (-1SD)",
     "IE_misfit_excess (+1SD)", "IE_misfit_deficiency (-1SD)",
@@ -428,7 +473,7 @@ run_mediated_rsa <- function(data,
     "PA_x0", "PA_y0", "PA_p11", "PA_p10", "PA_p21", "PA_p20"
   )
 
-  ie_indices <- 15:22
+  ie_indices <- c(15:27)  # ind_X..ind_Y2 (15-19) + IE_fit_slope..IE_misfit_deficiency (20-27)
 
   results_table <- data.frame(
     Parameter       = param_names,
@@ -490,6 +535,8 @@ run_mediated_rsa <- function(data,
       misfit_excess = a_misfit_excess, misfit_deficiency = a_misfit_deficiency
     ),
     indirect_effects = list(
+      ind_x = ind_x, ind_y = ind_y, ind_x2 = ind_x2,
+      ind_xy = ind_xy, ind_y2 = ind_y2,
       ie_fit_slope = ie_fit_slope, ie_fit_curve = ie_fit_curve,
       ie_misfit_slope = ie_misfit_slope, ie_misfit_curve = ie_misfit_curve,
       ie_fit_high = ie_fit_high, ie_fit_low = ie_fit_low,
@@ -501,7 +548,8 @@ run_mediated_rsa <- function(data,
     results_table  = results_table,
     sd_pooled      = sd_pooled,
     n = n,
-    n_boot_failed = n_failed
+    n_boot_failed = n_failed,
+    n_pa_na = n_pa_na
   )
 }
 
@@ -911,6 +959,96 @@ cat("\n所有 14 个模型运行完毕。\n")
 
 
 # =============================================================================
+# 第 8b 部分: 敏感性分析 — b 路径也控制 T2 中介前测
+# =============================================================================
+# 理论依据: 主分析中 b 路径不控制 M_T2, 间接效应反映
+#   poly_T2 → M 变化 × M 水平 → Z 变化
+# 敏感性分析中 b 路径也控制 M_T2, 间接效应反映
+#   poly_T2 → M 变化 × M 变化 → Z 变化
+# 两者结果一致则表明间接效应稳健。
+
+cat("\n")
+cat("=================================================================\n")
+cat("  开始敏感性分析: b 路径控制 M_T2\n")
+cat("=================================================================\n")
+
+all_results_sensitivity <- list()
+model_counter_sens <- 0
+
+for (pred in PREDICTOR_SPECS) {
+  for (med in MEDIATOR_SPECS) {
+    model_counter_sens <- model_counter_sens + 1
+    m_t2_c    <- paste0(med$m_t2, "_c")
+    model_key <- paste0(pred$tag, "__", gsub("_T3$", "", med$m_t3))
+
+    label_cn <- paste0("[敏感性] ", pred$label_cn, " -> ", med$label_cn, " -> 学业倦怠")
+
+    cat("\n# 敏感性模型", model_counter_sens, "/14:", label_cn, "\n")
+
+    result_sens <- run_mediated_rsa(
+      data    = dat_analysis,
+      x_var   = pred$x,   y_var  = pred$y,
+      x2_var  = pred$x2,  xy_var = pred$xy,  y2_var = pred$y2,
+      m_var   = med$m_t3,
+      z_var   = "burnout_T4",
+      control_vars_a     = c(CTRL_BASE, m_t2_c),
+      control_vars_b     = c(CTRL_BASE, m_t2_c),   # <- 敏感性: b 路径也控制 M_T2
+      control_vars_total = CTRL_BASE,
+      sd_pooled = pred$sd_pooled,
+      n_boot    = 5000
+    )
+
+    out_file_sens <- paste0("results_sensitivity_", pred$tag, "_",
+                            gsub("_T3$", "", med$m_t3), ".xlsx")
+    export_results(result_sens, out_file_sens, label_cn)
+
+    all_results_sensitivity[[model_key]] <- result_sens
+  }
+}
+
+cat("\n敏感性分析: 所有 14 个模型运行完毕。\n")
+
+# --- 敏感性分析间接效应汇总 ---
+cat("\n--- 敏感性分析间接效应汇总 ---\n\n")
+
+sensitivity_summary_rows <- list()
+
+for (pred in PREDICTOR_SPECS) {
+  for (med in MEDIATOR_SPECS) {
+    model_key <- paste0(pred$tag, "__", gsub("_T3$", "", med$m_t3))
+    res <- all_results_sensitivity[[model_key]]
+    if (is.null(res)) next
+
+    ie_rows <- res$results_table[grep("^IE_", res$results_table$Parameter), ]
+    for (j in seq_len(nrow(ie_rows))) {
+      sensitivity_summary_rows[[length(sensitivity_summary_rows) + 1]] <- data.frame(
+        Predictor = pred$label_en,
+        Mediator  = med$label_en,
+        N         = res$n,
+        Effect    = ie_rows$Parameter[j],
+        Estimate  = ie_rows$Estimate[j],
+        SE        = ie_rows$SE[j],
+        CI_Lo_Perc = ie_rows$CI_Lower_Perc[j],
+        CI_Hi_Perc = ie_rows$CI_Upper_Perc[j],
+        Sig_Perc   = ie_rows$Sig_Perc[j],
+        CI_Lo_BCa  = ie_rows$CI_Lower_BCa[j],
+        CI_Hi_BCa  = ie_rows$CI_Upper_BCa[j],
+        Sig_BCa    = ie_rows$Sig_BCa[j],
+        stringsAsFactors = FALSE
+      )
+    }
+  }
+}
+
+sensitivity_summary_table <- do.call(rbind, sensitivity_summary_rows)
+print(sensitivity_summary_table, row.names = FALSE)
+
+write_xlsx(list(IE_Sensitivity = sensitivity_summary_table),
+           path = "results_sensitivity_indirect_effects_summary.xlsx")
+cat("\n敏感性分析汇总表已导出到: results_sensitivity_indirect_effects_summary.xlsx\n")
+
+
+# =============================================================================
 # 第 9 部分: 响应面绘图 (按预测变量组合分别生成 PDF)
 # =============================================================================
 
@@ -1084,4 +1222,6 @@ cat("  - results_op_*.xlsx / results_as_*.xlsx  (各模型详细结果)\n")
 cat("  - results_all_indirect_effects_summary.xlsx  (间接效应汇总)\n")
 cat("  - response_surface_plots_op.pdf  (过度养育响应面图)\n")
 cat("  - response_surface_plots_as.pdf  (自主支持响应面图)\n")
+cat("  - results_sensitivity_*.xlsx  (敏感性分析: b 路径控制 M_T2)\n")
+cat("  - results_sensitivity_indirect_effects_summary.xlsx  (敏感性分析间接效应汇总)\n")
 cat("\n")
