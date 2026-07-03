@@ -33,7 +33,17 @@
 #   - 所有控制变量均值中心化 (修正绘图截距)
 #
 # 敏感性分析:
-#   - b 路径也控制 M_T2 (结果见 results_sensitivity_*.xlsx)
+#   - 敏感性 1: b 路径也控制 M_T2 (结果见 results_sensitivity_*.xlsx)
+#   - 敏感性 2: b 路径以 burnout_T3 替代 burnout_T2 作为结果自回归
+#     (严格 Cole-Maxwell 序列设定; a 路径与总效应方程不变;
+#      结果见 results_sens2_bT3_*.xlsx)
+#   - 敏感性 3: a 路径不控制 burnout_T2 (保留 M_T2, sex, SES;
+#     b 路径与总效应方程不变; 结果见 results_sens3_noBurnA_*.xlsx)
+#
+# 诊断回归:
+#   - burnout_T2 ~ 五个多项式项 (按预测变量组合各一次),
+#     其 R^2 预示主分析与敏感性 3 的分岔程度
+#     (结果见 results_diagnostic_burnout_T2_polynomial.xlsx)
 #
 # Pooled SD:
 #   - sqrt((SDx^2 + SDy^2) / 2)，与 Fu et al. 模拟实际使用一致
@@ -93,6 +103,7 @@ SCALE_RANGES <- list(
   student_autonomy_support_T2 = c(1, 7),
   parent_autonomy_support_T2  = c(1, 7),
   burnout_T2                  = c(1, 7),
+  burnout_T3                  = c(1, 7),
   burnout_T4                  = c(1, 7),
   academic_self_efficacy_T2   = c(1, 7),
   academic_self_efficacy_T3   = c(1, 7),
@@ -144,7 +155,7 @@ REQUIRED_VARS <- c(
   "final_id", "sex_T1", "parent_SES_T2",
   "student_overparenting_T2", "parent_overparenting_T2",
   "student_autonomy_support_T2", "parent_autonomy_support_T2",
-  "burnout_T2", "burnout_T4",
+  "burnout_T2", "burnout_T3", "burnout_T4",
   "has_T2_parent", "has_T3", "has_T4",
   "caregiver_match_T2",
   "academic_self_efficacy_T2", "academic_self_efficacy_T3",
@@ -196,7 +207,9 @@ dat_analysis <- dat_analysis %>%
     ses_control_c = as.numeric(parent_SES_T2) -
       mean(as.numeric(parent_SES_T2), na.rm = TRUE),
     baseline_burnout_c = as.numeric(burnout_T2) -
-      mean(as.numeric(burnout_T2), na.rm = TRUE)
+      mean(as.numeric(burnout_T2), na.rm = TRUE),
+    burnout_T3_c = as.numeric(burnout_T3) -
+      mean(as.numeric(burnout_T3), na.rm = TRUE)
   )
 
 # 中介变量 T2 前测均值中心化 (批量处理)
@@ -1036,6 +1049,252 @@ cat("\n敏感性分析汇总表已导出到: results_sensitivity_indirect_effect
 
 
 # =============================================================================
+# 第 8c 部分: 诊断回归 — burnout_T2 ~ 五个多项式项
+# =============================================================================
+# 目的: 量化 burnout_T2 与暴露 (X/Y 多项式组态) 的关联。
+#   a 路径混淆的要件是 "与暴露相关 + 影响 M_T3"; 此处 R^2 近零
+#   意味着主分析与敏感性 3 (a 路径去 burnout_T2) 几乎不会分岔。
+#   必须包含平方与乘积项: 非线性关联可能在线性相关近零时存在。
+
+cat("\n")
+cat("=================================================================\n")
+cat("  诊断回归: burnout_T2 ~ 五个多项式项 (按预测变量组合)\n")
+cat("=================================================================\n")
+
+diag_fit_rows  <- list()
+diag_coef_rows <- list()
+
+for (pred in PREDICTOR_SPECS) {
+  diag_formula <- as.formula(paste(
+    "burnout_T2 ~",
+    paste(c(pred$x, pred$y, pred$x2, pred$xy, pred$y2), collapse = " + ")))
+  diag_model <- lm(diag_formula, data = dat_analysis)
+  diag_sum   <- summary(diag_model)
+  f_stat <- diag_sum$fstatistic
+  f_p    <- pf(f_stat[1], f_stat[2], f_stat[3], lower.tail = FALSE)
+
+  cat("\n---", pred$label_cn, "---\n")
+  cat("公式:", deparse(diag_formula, width.cutoff = 200), "\n")
+  cat("n =", nobs(diag_model),
+      "| R2 =", round(diag_sum$r.squared, 4),
+      "| Adj.R2 =", round(diag_sum$adj.r.squared, 4),
+      "| F(", f_stat[2], ",", f_stat[3], ") =", round(f_stat[1], 3),
+      "| p =", format.pval(f_p, digits = 4), "\n")
+  print(diag_sum$coefficients)
+
+  diag_fit_rows[[pred$tag]] <- data.frame(
+    Predictor_Set = pred$label_en,
+    N             = nobs(diag_model),
+    R_squared     = diag_sum$r.squared,
+    Adj_R_squared = diag_sum$adj.r.squared,
+    F_value       = unname(f_stat[1]),
+    df1           = unname(f_stat[2]),
+    df2           = unname(f_stat[3]),
+    p_value       = unname(f_p),
+    stringsAsFactors = FALSE
+  )
+
+  cf <- as.data.frame(diag_sum$coefficients)
+  cf$Variable      <- rownames(cf)
+  cf$Predictor_Set <- pred$label_en
+  diag_coef_rows[[pred$tag]] <-
+    cf[, c("Predictor_Set", "Variable", "Estimate",
+           "Std. Error", "t value", "Pr(>|t|)")]
+}
+
+diag_fit_table  <- do.call(rbind, diag_fit_rows)
+diag_coef_table <- do.call(rbind, diag_coef_rows)
+
+write_xlsx(list(Fit_Summary  = diag_fit_table,
+                Coefficients = diag_coef_table),
+           path = "results_diagnostic_burnout_T2_polynomial.xlsx")
+cat("\n诊断回归结果已导出到: results_diagnostic_burnout_T2_polynomial.xlsx\n")
+
+
+# --- 辅助: 间接效应汇总表构建 (供敏感性 2/3 复用) ---
+build_ie_summary <- function(results_list) {
+  rows <- list()
+  for (pred in PREDICTOR_SPECS) {
+    for (med in MEDIATOR_SPECS) {
+      model_key <- paste0(pred$tag, "__", gsub("_T3$", "", med$m_t3))
+      res <- results_list[[model_key]]
+      if (is.null(res)) next
+      ie_rows <- res$results_table[
+        grep("^(IE_|ind_)", res$results_table$Parameter), ]
+      for (j in seq_len(nrow(ie_rows))) {
+        rows[[length(rows) + 1]] <- data.frame(
+          Predictor  = pred$label_en,
+          Mediator   = med$label_en,
+          N          = res$n,
+          Effect     = ie_rows$Parameter[j],
+          Estimate   = ie_rows$Estimate[j],
+          SE         = ie_rows$SE[j],
+          CI_Lo_Perc = ie_rows$CI_Lower_Perc[j],
+          CI_Hi_Perc = ie_rows$CI_Upper_Perc[j],
+          Sig_Perc   = ie_rows$Sig_Perc[j],
+          CI_Lo_BCa  = ie_rows$CI_Lower_BCa[j],
+          CI_Hi_BCa  = ie_rows$CI_Upper_BCa[j],
+          Sig_BCa    = ie_rows$Sig_BCa[j],
+          stringsAsFactors = FALSE
+        )
+      }
+    }
+  }
+  do.call(rbind, rows)
+}
+
+
+# =============================================================================
+# 第 8d 部分: 敏感性分析 2 — b 路径以 burnout_T3 替代 burnout_T2
+# =============================================================================
+# 理论依据 (严格 Cole & Maxwell 序列设定):
+#   结果方程的自回归控制取紧邻前一波 → b 路径控制 burnout_T3,
+#   beta 解释为 M_T3 对 T3→T4 倦怠"变化"的效应。
+#   前提假设: 因果效应需要时滞 (同一波内 M_T3 不影响 burnout_T3)。
+#   若该假设不成立, burnout_T3 已携带 M_T3 的部分效应,
+#   控制它会把 beta 向零压缩 (保守方向) — 故此设定作敏感性而非主分析。
+# 设计约束:
+#   - a 路径保持主分析设定 (sex, SES, burnout_T2, M_T2)
+#   - 总效应方程保持 burnout_T2 — burnout_T3 是 X 之后的中间变量,
+#     绝不进入总效应方程 (过度控制/对撞风险)
+#   - 协变量集跨方程差异扩大 → total ≈ direct + indirect 的近似性增大
+# 样本量: run_mediated_rsa 按三方程协变量并集做 listwise deletion,
+#   burnout_T3 有缺失时本部分 n 会小于主分析, 逐模型打印比较。
+
+cat("\n")
+cat("=================================================================\n")
+cat("  开始敏感性分析 2: b 路径以 burnout_T3 替代 burnout_T2\n")
+cat("=================================================================\n")
+
+CTRL_B_T3 <- c("sex_T1_c", "ses_control_c", "burnout_T3_c")
+
+all_results_sens2 <- list()
+model_counter_sens2 <- 0
+
+for (pred in PREDICTOR_SPECS) {
+  for (med in MEDIATOR_SPECS) {
+    model_counter_sens2 <- model_counter_sens2 + 1
+    m_t2_c    <- paste0(med$m_t2, "_c")
+    model_key <- paste0(pred$tag, "__", gsub("_T3$", "", med$m_t3))
+
+    label_cn <- paste0("[敏感性2: b路径burnout_T3] ", pred$label_cn,
+                       " -> ", med$label_cn, " -> 学业倦怠")
+
+    cat("\n# 敏感性2 模型", model_counter_sens2, "/14:", label_cn, "\n")
+
+    result_s2 <- run_mediated_rsa(
+      data    = dat_analysis,
+      x_var   = pred$x,   y_var  = pred$y,
+      x2_var  = pred$x2,  xy_var = pred$xy,  y2_var = pred$y2,
+      m_var   = med$m_t3,
+      z_var   = "burnout_T4",
+      control_vars_a     = c(CTRL_BASE, m_t2_c),  # a 路径: 主分析设定不变
+      control_vars_b     = CTRL_B_T3,             # <- burnout_T3 替代 burnout_T2
+      control_vars_total = CTRL_BASE,             # 总效应: 保持 burnout_T2
+      sd_pooled = pred$sd_pooled,
+      n_boot    = 5000
+    )
+
+    n_primary <- all_results[[model_key]]$n
+    if (!is.null(n_primary) && result_s2$n != n_primary) {
+      cat("  [样本量差异] 主分析 n =", n_primary,
+          "; 敏感性2 n =", result_s2$n,
+          "(burnout_T3 缺失所致, 比较结果时注意样本差异)\n")
+    }
+
+    out_file_s2 <- paste0("results_sens2_bT3_", pred$tag, "_",
+                          gsub("_T3$", "", med$m_t3), ".xlsx")
+    export_results(result_s2, out_file_s2, label_cn)
+
+    all_results_sens2[[model_key]] <- result_s2
+  }
+}
+
+cat("\n敏感性分析 2: 所有 14 个模型运行完毕。\n")
+
+cat("\n--- 敏感性分析 2 间接效应汇总 ---\n\n")
+sens2_summary_table <- build_ie_summary(all_results_sens2)
+print(sens2_summary_table, row.names = FALSE)
+
+write_xlsx(list(IE_Sens2_bT3 = sens2_summary_table),
+           path = "results_sens2_bT3_indirect_effects_summary.xlsx")
+cat("\n敏感性2 汇总表已导出到: results_sens2_bT3_indirect_effects_summary.xlsx\n")
+
+
+# =============================================================================
+# 第 8e 部分: 敏感性分析 3 — a 路径不控制 burnout_T2
+# =============================================================================
+# 理论依据:
+#   burnout_T2 不是 a 方程因变量 (M_T3) 的前测, 不属于该方程的最低
+#   限度自回归要件; 主分析将其纳入 a 路径的依据是 C&M 完整交叉滞后
+#   设定 (估计而非省略 "结果→中介" 交叉滞后) 与前测混淆控制。
+#   本敏感性去掉它, 检验 a 路径是否由 T2 倦怠差异驱动;
+#   解读时结合 8c 诊断回归: 其 R^2 近零 ⇒ 两套结果必然接近。
+# 设计约束:
+#   - b 路径与总效应保持主分析设定 (含 burnout_T2): b 方程中它兼任
+#     结果自回归与中介-结果混淆控制, 不可去除
+#   - 三方程协变量并集不变 (burnout_T2 仍在 b/总效应) → listwise
+#     deletion 样本与主分析完全一致, 结果差异纯由设定差异驱动
+
+cat("\n")
+cat("=================================================================\n")
+cat("  开始敏感性分析 3: a 路径不控制 burnout_T2\n")
+cat("=================================================================\n")
+
+CTRL_NO_BURN <- c("sex_T1_c", "ses_control_c")
+
+all_results_sens3 <- list()
+model_counter_sens3 <- 0
+
+for (pred in PREDICTOR_SPECS) {
+  for (med in MEDIATOR_SPECS) {
+    model_counter_sens3 <- model_counter_sens3 + 1
+    m_t2_c    <- paste0(med$m_t2, "_c")
+    model_key <- paste0(pred$tag, "__", gsub("_T3$", "", med$m_t3))
+
+    label_cn <- paste0("[敏感性3: a路径去burnout_T2] ", pred$label_cn,
+                       " -> ", med$label_cn, " -> 学业倦怠")
+
+    cat("\n# 敏感性3 模型", model_counter_sens3, "/14:", label_cn, "\n")
+
+    result_s3 <- run_mediated_rsa(
+      data    = dat_analysis,
+      x_var   = pred$x,   y_var  = pred$y,
+      x2_var  = pred$x2,  xy_var = pred$xy,  y2_var = pred$y2,
+      m_var   = med$m_t3,
+      z_var   = "burnout_T4",
+      control_vars_a     = c(CTRL_NO_BURN, m_t2_c),  # <- 去 burnout_T2, 保留 M_T2
+      control_vars_b     = CTRL_BASE,                # b 路径: 主分析设定不变
+      control_vars_total = CTRL_BASE,                # 总效应: 主分析设定不变
+      sd_pooled = pred$sd_pooled,
+      n_boot    = 5000
+    )
+
+    if (result_s3$n != all_results[[model_key]]$n) {
+      warning("敏感性3 样本量与主分析不一致 (", model_key,
+              "): 请检查 — 按设计两者应完全相同。")
+    }
+
+    out_file_s3 <- paste0("results_sens3_noBurnA_", pred$tag, "_",
+                          gsub("_T3$", "", med$m_t3), ".xlsx")
+    export_results(result_s3, out_file_s3, label_cn)
+
+    all_results_sens3[[model_key]] <- result_s3
+  }
+}
+
+cat("\n敏感性分析 3: 所有 14 个模型运行完毕。\n")
+
+cat("\n--- 敏感性分析 3 间接效应汇总 ---\n\n")
+sens3_summary_table <- build_ie_summary(all_results_sens3)
+print(sens3_summary_table, row.names = FALSE)
+
+write_xlsx(list(IE_Sens3_noBurnA = sens3_summary_table),
+           path = "results_sens3_noBurnA_indirect_effects_summary.xlsx")
+cat("\n敏感性3 汇总表已导出到: results_sens3_noBurnA_indirect_effects_summary.xlsx\n")
+
+
+# =============================================================================
 # 第 9 部分: 响应面绘图 (按预测变量组合分别生成 PDF)
 # =============================================================================
 
@@ -1191,7 +1450,7 @@ cat("\n汇总表已导出到: results_all_indirect_effects_summary.xlsx\n")
 
 cat("\n")
 cat("=================================================================\n")
-cat("  分析完成! 共运行 14 个中介 RSA 模型\n")
+cat("  分析完成! 主分析 14 个模型 + 3 套敏感性分析 (各 14 个) + 2 个诊断回归\n")
 cat("=================================================================\n\n")
 cat("预测变量组合:\n")
 cat("  (1) 过度养育 (parent vs student)\n")
@@ -1209,6 +1468,11 @@ cat("  - results_op_*.xlsx / results_as_*.xlsx  (各模型详细结果)\n")
 cat("  - results_all_indirect_effects_summary.xlsx  (间接效应汇总)\n")
 cat("  - response_surface_plots_op.pdf  (过度养育响应面图)\n")
 cat("  - response_surface_plots_as.pdf  (自主支持响应面图)\n")
-cat("  - results_sensitivity_*.xlsx  (敏感性分析: b 路径控制 M_T2)\n")
-cat("  - results_sensitivity_indirect_effects_summary.xlsx  (敏感性分析间接效应汇总)\n")
+cat("  - results_sensitivity_*.xlsx  (敏感性 1: b 路径控制 M_T2)\n")
+cat("  - results_sensitivity_indirect_effects_summary.xlsx  (敏感性 1 汇总)\n")
+cat("  - results_sens2_bT3_*.xlsx  (敏感性 2: b 路径以 burnout_T3 替代 burnout_T2)\n")
+cat("  - results_sens2_bT3_indirect_effects_summary.xlsx  (敏感性 2 汇总)\n")
+cat("  - results_sens3_noBurnA_*.xlsx  (敏感性 3: a 路径不控制 burnout_T2)\n")
+cat("  - results_sens3_noBurnA_indirect_effects_summary.xlsx  (敏感性 3 汇总)\n")
+cat("  - results_diagnostic_burnout_T2_polynomial.xlsx  (诊断回归: burnout_T2 ~ 多项式项)\n")
 cat("\n")
