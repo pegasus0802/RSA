@@ -173,6 +173,26 @@ if (length(missing_vars) > 0) {
 }
 cat("\n所有必需变量已确认存在。\n")
 
+# --- 1.35 设计性筛选变量稳健转换 (TRUE/FALSE、字符、中文 -> 1/0) ---
+# readxl 可能把标志列读成逻辑型或字符型 "TRUE"/"FALSE",
+# 此时 `== 1` 全部失败, 设计性筛选后样本量为 0。统一转成数值 1/0。
+to01 <- function(x) {
+  x_chr <- trimws(as.character(x))
+  dplyr::case_when(
+    x_chr %in% c("TRUE", "True", "true", "T", "1", "是", "yes", "YES", "Y", "y") ~ 1,
+    x_chr %in% c("FALSE", "False", "false", "F", "0", "否", "no", "NO", "N", "n") ~ 0,
+    TRUE ~ suppressWarnings(as.numeric(x_chr))
+  )
+}
+
+dat <- dat %>%
+  mutate(
+    has_T2_parent      = to01(has_T2_parent),
+    has_T3             = to01(has_T3),
+    has_T4             = to01(has_T4),
+    caregiver_match_T2 = to01(caregiver_match_T2)
+  )
+
 # --- 1.4 设计性筛选 ---
 dat_analysis <- dat %>%
   filter(has_T2_parent == 1, has_T3 == 1, has_T4 == 1,
